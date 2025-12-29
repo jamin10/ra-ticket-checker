@@ -30,7 +30,7 @@ public class Notifier
     {
         _services = services;
         _logger = logger;
-        _toPhoneNumber = config.GetValue<string>("WhatsAppBusinessCloudApiConfiguration:ToPhoneNumber") ?? string.Empty;
+        _toPhoneNumber = config["toPhoneNumber"] ?? string.Empty;
         _accessToken = config.GetValue<string>("WhatsAppBusinessCloudApiConfiguration:AccessToken") ?? string.Empty;
         _phoneNumberId = config.GetValue<string>("WhatsAppBusinessCloudApiConfiguration:WhatsAppBusinessPhoneNumberId") ?? string.Empty;
     }

@@ -17,9 +17,6 @@ public class Poller
     _http = http;
     _logger = logger;
     _targetUrl = config["TargetUrl"];
-
-    _positiveKeywords = config.GetSection("Detection:PositiveKeywords").Get<string[]>();
-    _negativeKeywords = config.GetSection("Detection:NegativeKeywords").Get<string[]>() ?? new[] { "Sold out", "sold out", "No tickets", "sold-out" };
     }
 
     public async Task<bool> CheckAsync(CancellationToken ct = default)
@@ -63,34 +60,18 @@ public class Poller
         await ApplyStealthAsync(context);
 
         var page = await context.NewPageAsync();
+        await page.GotoAsync(_targetUrl);
 
-        await page.GotoAsync(_targetUrl,
-            new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
-
-        // Example human-like interaction
         await page.WaitForTimeoutAsync(RandomMs(800, 1500));
         await page.Mouse.MoveAsync(300, 400, new() { Steps = 20 });
 
-        Console.WriteLine("Page loaded. Press ENTER to exit.");
-        Console.ReadLine();
+        var frameLocator = page.FrameLocator("iframe[data-testid='tickets-iframe-2325782']");
 
-        // Count available ticket <li> elements (not closed)
-        var magCount = await page.Locator(":nth-match(span:has-text(\"Magazine\"), 3)").CountAsync();
-        //var text = await page.GetByText("Magazine").TextContentAsync();
-        var tiers = page.Locator(":nth-match(div:has-text(\"Tier\"), 3)");
-        //.Locator("xpath=../..");
-        var className = await tiers.GetAttributeAsync("class");
-        //var parent = await page.Locator("div:")
-        var child = await page.GetByText("Anytime release 2 + re-entry (£30 + BF)").CountAsync();
-        //var openTickets = await page.Locator("ul[data-ticket-info-selector-id='tickets-info'] > li:not(.closed)").CountAsync();
-        await page.Locator("ul[data-ticket-info-selector-id='tickets-info'] > li").WaitForAsync(new() { State = WaitForSelectorState.Attached });
-        var openTickets = await page.Locator("ul[data-ticket-info-selector-id='tickets-info'] > li").CountAsync();
-        var count = await page.Locator("ol.collection-grid > li").CountAsync();
-        
-        var availableTickets = 0;
-        if (availableTickets > 0)
+        var tierFinal = frameLocator.Locator("li:has-text(\"Final Release (Anytime Entry) - £40.00 + BF\")").Last;
+        var className = await tierFinal.GetAttributeAsync("class");
+
+        if (className != "closed")
         {
-            _logger.LogInformation("Found {Count} open ticket(s).", availableTickets);
             return true;
         }
 
