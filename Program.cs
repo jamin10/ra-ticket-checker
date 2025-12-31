@@ -15,6 +15,7 @@ public class Program
             .ConfigureAppConfiguration((ctx, cfg) =>
             {
                 cfg.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+                cfg.AddJsonFile("appsettings.local.json", optional: true, reloadOnChange: true);
                 cfg.AddEnvironmentVariables();
             })
             .ConfigureServices((context, services) =>

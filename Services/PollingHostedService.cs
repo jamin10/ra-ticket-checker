@@ -29,6 +29,7 @@ public class PollingHostedService : BackgroundService
         {
             try
             {
+                await _notifier.SendAsync($"Tickets appear available at {DateTime.UtcNow:o}", stoppingToken);
                 var available = await _poller.CheckAsync(stoppingToken);
 
                 if (available && !_lastKnownAvailable)

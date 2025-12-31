@@ -1,14 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Http;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Raticketbot;
@@ -22,6 +15,7 @@ public class Notifier
 {
     private readonly IServiceProvider _services;
     private readonly ILogger<Notifier> _logger;
+    private readonly IConfiguration _whatsappSettings;
     private readonly string _toPhoneNumber;
     private readonly string _accessToken;
     private readonly string _phoneNumberId;
@@ -30,7 +24,8 @@ public class Notifier
     {
         _services = services;
         _logger = logger;
-        _toPhoneNumber = config["toPhoneNumber"] ?? string.Empty;
+        _whatsappSettings = config.GetSection("WhatsAppBusinessCloudApiConfiguration");
+        _toPhoneNumber = _whatsappSettings["ToPhoneNumber"];
         _accessToken = config.GetValue<string>("WhatsAppBusinessCloudApiConfiguration:AccessToken") ?? string.Empty;
         _phoneNumberId = config.GetValue<string>("WhatsAppBusinessCloudApiConfiguration:WhatsAppBusinessPhoneNumberId") ?? string.Empty;
     }
@@ -43,78 +38,8 @@ public class Notifier
             return;
         }
 
-        // Try to find a registered wrapper client via reflection
-        var wrapperClient = ResolveWrapperClient();
-        if (wrapperClient != null)
-        {
-            try
-            {
-                await SendUsingWrapperAsync(wrapperClient, message, ct);
-                return;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Wrapper client failed — falling back to direct API call");
-            }
-        }
-
         // Fallback: send direct to Meta Graph API
         await SendUsingHttpClientAsync(message, ct);
-    }
-
-    private object? ResolveWrapperClient()
-    {
-        // Look for a service registered whose type name contains "WhatsAppBusinessClient" or "IWhatsAppBusinessClient"
-        foreach (var service in new[] { "IWhatsAppBusinessClient", "WhatsAppBusinessClient" })
-        {
-            var type = AppDomain.CurrentDomain.GetAssemblies()
-                .SelectMany(a => a.GetTypesSafe())
-                .FirstOrDefault(t => string.Equals(t.Name, service, StringComparison.OrdinalIgnoreCase));
-
-            if (type != null)
-            {
-                try
-                {
-                    var obj = _services.GetService(type);
-                    if (obj != null) return obj;
-                }
-                catch { /* ignore */ }
-            }
-        }
-
-        return null;
-    }
-
-    private async Task SendUsingWrapperAsync(object client, string message, CancellationToken ct)
-    {
-        // Try to create a TextMessageRequest via reflection and call SendTextMessageAsync
-        var clientType = client.GetType();
-
-        var assemblies = AppDomain.CurrentDomain.GetAssemblies();
-        var textRequestType = assemblies.SelectMany(a => a.GetTypesSafe()).FirstOrDefault(t => t.Name == "TextMessageRequest");
-        var whatsAppTextType = assemblies.SelectMany(a => a.GetTypesSafe()).FirstOrDefault(t => t.Name == "WhatsAppText");
-
-        if (textRequestType == null || whatsAppTextType == null)
-            throw new InvalidOperationException("Wrapper request types not found in assemblies");
-
-        var textRequest = Activator.CreateInstance(textRequestType)!;
-        var textObj = Activator.CreateInstance(whatsAppTextType)!;
-
-        // set properties via reflection
-        textRequestType.GetProperty("To")?.SetValue(textRequest, _toPhoneNumber);
-        whatsAppTextType.GetProperty("Body")?.SetValue(textObj, message);
-        whatsAppTextType.GetProperty("PreviewUrl")?.SetValue(textObj, false);
-        textRequestType.GetProperty("Text")?.SetValue(textRequest, textObj);
-
-        // find SendTextMessageAsync method
-        var method = clientType.GetMethods().FirstOrDefault(m => m.Name == "SendTextMessageAsync");
-        if (method == null) throw new InvalidOperationException("SendTextMessageAsync not found on wrapper client");
-
-        var task = (Task?)method.Invoke(client, new[] { textRequest, ct });
-        if (task == null) throw new InvalidOperationException("Wrapper SendTextMessageAsync returned null");
-
-        await task.ConfigureAwait(false);
-        _logger.LogInformation("Message sent via wrapper client");
     }
 
     private async Task SendUsingHttpClientAsync(string message, CancellationToken ct)
@@ -126,7 +51,7 @@ public class Notifier
         }
 
         using var http = new HttpClient();
-        var url = $"https://graph.facebook.com/v17.0/{_phoneNumberId}/messages?access_token={_accessToken}";
+        var url = $"https://graph.facebook.com/v17.0/{_phoneNumberId}/messages";
 
         var payload = new
         {
@@ -137,7 +62,16 @@ public class Notifier
         };
 
         var json = JsonSerializer.Serialize(payload);
-        var resp = await http.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"), ct);
+        var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json")
+        };
+        // Add required headers
+        request.Headers.Add("User-Agent", "ra-ticket-checker/1.0");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _accessToken);
+        request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+
+        var resp = await http.SendAsync(request, ct);
         var respBody = await resp.Content.ReadAsStringAsync(ct);
         if (resp.IsSuccessStatusCode)
         {
@@ -146,21 +80,6 @@ public class Notifier
         else
         {
             _logger.LogError("Graph API send failed: {Status} {Response}", resp.StatusCode, respBody);
-        }
-    }
-}
-
-internal static class ReflectionExtensions
-{
-    public static IEnumerable<Type> GetTypesSafe(this Assembly assembly)
-    {
-        try
-        {
-            return assembly.GetTypes();
-        }
-        catch
-        {
-            return Array.Empty<Type>();
         }
     }
 }
