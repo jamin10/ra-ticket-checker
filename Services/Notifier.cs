@@ -51,14 +51,16 @@ public class Notifier
         }
 
         using var http = new HttpClient();
-        var url = $"https://graph.facebook.com/v17.0/{_phoneNumberId}/messages";
+        var url = $"https://graph.facebook.com/v24.0/{_phoneNumberId}/messages";
 
         var payload = new
         {
             messaging_product = "whatsapp",
+            recipient_type = "individual",
             to = _toPhoneNumber,
-            type = "text",
-            text = new { body = message }
+            type = "template",
+            template = new { name = "hello_world",
+                         language = new { code = "en_US" } }
         };
 
         var json = JsonSerializer.Serialize(payload);
@@ -67,7 +69,7 @@ public class Notifier
             Content = new StringContent(json, Encoding.UTF8, "application/json")
         };
         // Add required headers
-        request.Headers.Add("User-Agent", "ra-ticket-checker/1.0");
+        //request.Headers.Add("User-Agent", "ra-ticket-checker/1.0");
         request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _accessToken);
         request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
 
