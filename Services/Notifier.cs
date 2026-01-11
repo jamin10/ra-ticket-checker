@@ -30,7 +30,7 @@ public class Notifier
         _phoneNumberId = config.GetValue<string>("WhatsAppBusinessCloudApiConfiguration:WhatsAppBusinessPhoneNumberId") ?? string.Empty;
     }
 
-    public async Task SendAsync(string message, CancellationToken ct = default)
+    public async Task SendAsync(CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(_toPhoneNumber))
         {
@@ -38,11 +38,10 @@ public class Notifier
             return;
         }
 
-        // Fallback: send direct to Meta Graph API
-        await SendUsingHttpClientAsync(message, ct);
+        await SendUsingHttpClientAsync(ct);
     }
 
-    private async Task SendUsingHttpClientAsync(string message, CancellationToken ct)
+    private async Task SendUsingHttpClientAsync(CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_accessToken) || string.IsNullOrWhiteSpace(_phoneNumberId))
         {

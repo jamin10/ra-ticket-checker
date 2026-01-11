@@ -9,14 +9,15 @@ public class Poller
     private readonly HttpClient _http;
     private readonly ILogger<Poller> _logger;
     private readonly string _targetUrl;
-    private readonly string[] _positiveKeywords;
-    private readonly string[] _negativeKeywords;
+
+    private readonly List<string> _tierNames;
 
     public Poller(HttpClient http, IConfiguration config, ILogger<Poller> logger)
     {
     _http = http;
     _logger = logger;
     _targetUrl = config["TargetUrl"];
+    _tierNames = config.GetSection("TierNames").Get<List<string>>() ?? new List<string>();
     }
 
     public async Task<bool> CheckAsync(CancellationToken ct = default)
@@ -65,17 +66,31 @@ public class Poller
         await page.WaitForTimeoutAsync(RandomMs(800, 1500));
         await page.Mouse.MoveAsync(300, 400, new() { Steps = 20 });
 
-        var frameLocator = page.FrameLocator("iframe[data-testid='tickets-iframe-2325782']");
+        //this number related to the ID of the event in the URL 
+        var frameLocator = page.FrameLocator("iframe[data-testid='tickets-iframe-2287366']");
 
-        var tierFinal = frameLocator.Locator("li:has-text(\"Final Release (Anytime Entry) - £40.00 + BF\")").Last;
-        var className = await tierFinal.GetAttributeAsync("class");
+        var tierClasses = await ExtractTierClasses(frameLocator);
 
-        if (className != "closed")
+        if (tierClasses.Any(c => c != "closed"))
         {
             return true;
         }
 
         return false;
+    }
+
+    private async Task<List<string>> ExtractTierClasses(IFrameLocator frameLocator)
+    {
+        var classes = new List<string>();
+
+        foreach (var tierName in _tierNames)
+        {
+            var tierLocator = frameLocator.Locator($"li:has-text(\"{tierName}\")").Last;
+            var className = await tierLocator.GetAttributeAsync("class");
+            classes.Add(className ?? string.Empty);
+        }
+
+        return classes;
     }
 
     static int RandomMs(int min, int max)
