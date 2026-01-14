@@ -66,10 +66,12 @@ public class Poller
         await page.WaitForTimeoutAsync(RandomMs(800, 1500));
         await page.Mouse.MoveAsync(300, 400, new() { Steps = 20 });
 
+        await page.WaitForSelectorAsync("iframe[data-testid='tickets-iframe-2287366']");
         //this number related to the ID of the event in the URL 
         var frameLocator = page.FrameLocator("iframe[data-testid='tickets-iframe-2287366']");
 
         var tierClasses = await ExtractTierClasses(frameLocator);
+        _logger.LogInformation("Found tier classes: {TierClasses}", string.Join(", ", tierClasses));
 
         if (tierClasses.Any(c => c != "closed"))
         {
